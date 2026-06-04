@@ -1,6 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -54,15 +54,8 @@ class TodoApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.system,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.indigo,
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorSchemeSeed: Colors.indigo,
-      ),
+      theme: ThemeData(useMaterial3: true),
+      darkTheme: ThemeData(useMaterial3: true, brightness: Brightness.dark),
       home: const TodoHome(),
     );
   }
@@ -76,32 +69,48 @@ class TodoHome extends StatefulWidget {
 }
 
 class _TodoHomeState extends State<TodoHome> {
-  static const storageKey = '@todos_v1';
   final TextEditingController controller = TextEditingController();
-
-  List<Todo> todos = [];
+  final List<Todo> todos = [];
   FilterType filter = FilterType.all;
+
+  late final File storageFile;
 
   @override
   void initState() {
     super.initState();
+    storageFile = _initStorage();
     _load();
   }
 
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(storageKey);
-    if (raw != null) {
-      final list = jsonDecode(raw) as List;
-      todos = list.map((e) => Todo.fromJson(e)).toList();
-      setState(() {});
+  /// Определяем путь: ./data/todos.json рядом с exe
+  File _initStorage() {
+    final exeDir = File(Platform.resolvedExecutable).parent;
+    final dataDir = Directory('${exeDir.path}/data');
+
+    if (!dataDir.existsSync()) {
+      dataDir.createSync(recursive: true);
     }
+
+    final file = File('${dataDir.path}/todos.json');
+
+    if (!file.existsSync()) {
+      file.writeAsStringSync('[]');
+    }
+
+    return file;
   }
 
-  Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    prefs.setString(
-      storageKey,
+  void _load() {
+    final raw = storageFile.readAsStringSync();
+    final list = jsonDecode(raw) as List;
+    todos
+      ..clear()
+      ..addAll(list.map((e) => Todo.fromJson(e)));
+    setState(() {});
+  }
+
+  void _save() {
+    storageFile.writeAsStringSync(
       jsonEncode(todos.map((e) => e.toJson()).toList()),
     );
     setState(() {});
@@ -144,19 +153,8 @@ class _TodoHomeState extends State<TodoHome> {
 
   @override
   Widget build(BuildContext context) {
-    final done = todos.where((e) => e.completed).length;
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Todo'),
-        actions: [
-          if (todos.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Center(child: Text('$done / ${todos.length}')),
-            )
-        ],
-      ),
+      appBar: AppBar(title: const Text('Todo')),
       floatingActionButton: FloatingActionButton(
         onPressed: openAdd,
         child: const Icon(Icons.add),
@@ -220,14 +218,8 @@ class _TodoHomeState extends State<TodoHome> {
     controller.clear();
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          left: 16,
-          right: 16,
-          top: 16,
-        ),
+        padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -235,15 +227,13 @@ class _TodoHomeState extends State<TodoHome> {
               controller: controller,
               autofocus: true,
               onSubmitted: submit,
-              decoration: const InputDecoration(
-                labelText: 'New task',
-              ),
+              decoration: const InputDecoration(labelText: 'New task'),
             ),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: () => submit(controller.text),
               child: const Text('Add'),
-            )
+            ),
           ],
         ),
       ),
