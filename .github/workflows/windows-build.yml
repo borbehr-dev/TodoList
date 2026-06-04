@@ -1,0 +1,55 @@
+name: Build Flutter Windows Application
+
+on:
+  push:
+    branches: [ "main" ] # Сборка запускается при пуше в main
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: # Позволяет запустить сборку руками через вкладку Actions
+
+jobs:
+  build:
+    runs-on: windows-2022 # Запуск на виртуалке Windows Server 2022 от GitHub
+
+    steps:
+    # 1. Забираем код из репозитория
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # 2. Ставим Java (нужна для корректной работы внутренних утилит)
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    # 3. Ставим сам Flutter SDK
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.22.2'
+        channel: 'stable'
+        cache: true # Кэширование, чтобы повторные сборки шли быстрее
+
+    # 4. Включаем поддержку десктопной винды во Flutter
+    - name: Enable Windows build
+      run: flutter config --enable-windows-desktop
+
+    # 5. Ставим зависимости из папки Windows
+    - name: Install dependencies
+      run: |
+        cd Windows
+        flutter pub get
+
+    # 6. Собираем релизный .exe файл
+    - name: Build Windows Executable
+      run: |
+        cd Windows
+        flutter build windows --release
+
+    # 7. Закидываем готовый билд в артефакты GitHub, чтобы его можно было скачать
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Windows-Todo-App
+        path: Windows/build/windows/x64/runner/Release/
