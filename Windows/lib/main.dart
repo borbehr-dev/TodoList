@@ -1,191 +1,258 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const TodoApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+enum FilterType { all, active, done }
+
+class Todo {
+  final String id;
+  final String text;
+  final bool completed;
+  final int createdAt;
+
+  Todo({
+    required this.id,
+    required this.text,
+    required this.completed,
+    required this.createdAt,
+  });
+
+  Todo copyWith({bool? completed}) {
+    return Todo(
+      id: id,
+      text: text,
+      completed: completed ?? this.completed,
+      createdAt: createdAt,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'text': text,
+        'completed': completed,
+        'createdAt': createdAt,
+      };
+
+  factory Todo.fromJson(Map<String, dynamic> json) => Todo(
+        id: json['id'],
+        text: json['text'],
+        completed: json['completed'],
+        createdAt: json['createdAt'],
+      );
+}
+
+class TodoApp extends StatelessWidget {
+  const TodoApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Мои задачи',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        // Глубокий черный фон как в оригинале
-        scaffoldBackgroundColor: const Color(0xFF090A0C),
+      themeMode: ThemeMode.system,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.indigo,
       ),
-      home: const TodoScreen(),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        colorSchemeSeed: Colors.indigo,
+      ),
+      home: const TodoHome(),
     );
   }
 }
 
-class TodoScreen extends StatefulWidget {
-  const TodoScreen({super.key});
+class TodoHome extends StatefulWidget {
+  const TodoHome({super.key});
 
   @override
-  State<TodoScreen> createState() => _TodoScreenState();
+  State<TodoHome> createState() => _TodoHomeState();
 }
 
-class _TodoScreenState extends State<TodoScreen> {
-  // Список задач для примера (как на твоем скрине)
-  final List<Map<String, dynamic>> _todos = [
-    {'title': 'протестить todo-лист веб', 'isDone': false},
-    {'title': 'зделать todo-лист (веб)', 'isDone': true},
-    {'title': 'зделать todo-лист (андроид)', 'isDone': true},
-    {'title': 'тест веб паблик', 'isDone': true},
-  ];
+class _TodoHomeState extends State<TodoHome> {
+  static const storageKey = '@todos_v1';
+  final TextEditingController controller = TextEditingController();
+
+  List<Todo> todos = [];
+  FilterType filter = FilterType.all;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(storageKey);
+    if (raw != null) {
+      final list = jsonDecode(raw) as List;
+      todos = list.map((e) => Todo.fromJson(e)).toList();
+      setState(() {});
+    }
+  }
+
+  Future<void> _save() async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setString(
+      storageKey,
+      jsonEncode(todos.map((e) => e.toJson()).toList()),
+    );
+    setState(() {});
+  }
+
+  void addTodo(String text) {
+    todos.insert(
+      0,
+      Todo(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        text: text.trim(),
+        completed: false,
+        createdAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+    _save();
+  }
+
+  void toggle(Todo todo) {
+    final i = todos.indexWhere((e) => e.id == todo.id);
+    todos[i] = todo.copyWith(completed: !todo.completed);
+    _save();
+  }
+
+  void remove(Todo todo) {
+    todos.removeWhere((e) => e.id == todo.id);
+    _save();
+  }
+
+  List<Todo> get filtered {
+    switch (filter) {
+      case FilterType.active:
+        return todos.where((e) => !e.completed).toList();
+      case FilterType.done:
+        return todos.where((e) => e.completed).toList();
+      default:
+        return todos;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Считаем выполненные задачи для индикатора 3/4
-    int doneCount = _todos.where((t) => t['isDone'] == true).length;
+    final done = todos.where((e) => e.completed).length;
 
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 40.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Дата сверху
-            Text(
-              'ЧЕТВЕРГ, 4 ИЮНЯ',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.4),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 8),
-            
-            // Заголовок и кругляшок 3/4
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Мои задачи',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                // Индикатор прогресса задач
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF1B1D27),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(
-                    '$doneCount/${_todos.length}',
-                    style: const TextStyle(
-                      color: Color(0xFF5B6DF6),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Фильтры (Все, Активные, Готово)
-            Row(
-              children: [
-                _buildFilterButton('Все', isActive: true),
-                const SizedBox(width: 12),
-                _buildFilterButton('Активные', isActive: false),
-                const SizedBox(width: 12),
-                _buildFilterButton('Готово', isActive: false),
-              ],
-            ),
-            const SizedBox(height: 32),
-
-            // Список карточек
-            Expanded(
-              child: ListView.builder(
-                itemCount: _todos.length,
-                itemBuilder: (context, index) {
-                  final todo = _todos[index];
-                  final bool isDone = todo['isDone'];
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF14161A), // Цвет карточки
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.05),
-                        width: 1,
-                      ),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      leading: IconButton(
-                        icon: Icon(
-                          isDone ? Icons.check_circle : Icons.radio_button_unchecked,
-                          color: isDone ? const Color(0xFF5B6DF6) : Colors.white.withOpacity(0.2),
-                          size: 24,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            todo['isDone'] = !todo['isDone'];
-                          });
-                        },
-                      ),
-                      title: Text(
-                        todo['title'],
-                        style: TextStyle(
-                          color: isDone ? Colors.white.withOpacity(0.3) : Colors.white,
-                          fontSize: 16,
-                          decoration: isDone ? TextDecoration.lineThrough : null,
-                        ),
-                      ),
-                      trailing: Icon(
-                        Icons.delete_outline,
-                        color: Colors.white.withOpacity(0.2),
-                        size: 20,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+      appBar: AppBar(
+        title: const Text('Todo'),
+        actions: [
+          if (todos.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Center(child: Text('$done / ${todos.length}')),
+            )
+        ],
       ),
-      // Кнопка плюса внизу справа
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        backgroundColor: const Color(0xFF5B6DF6),
-        shape: const CircleBorder(),
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
+        onPressed: openAdd,
+        child: const Icon(Icons.add),
+      ),
+      body: Column(
+        children: [
+          filterBar(),
+          Expanded(
+            child: filtered.isEmpty
+                ? const Center(child: Text('Пусто'))
+                : ListView.builder(
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) {
+                      final t = filtered[i];
+                      return ListTile(
+                        leading: Checkbox(
+                          value: t.completed,
+                          onChanged: (_) => toggle(t),
+                        ),
+                        title: Text(
+                          t.text,
+                          style: t.completed
+                              ? const TextStyle(
+                                  decoration: TextDecoration.lineThrough)
+                              : null,
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete),
+                          onPressed: () => remove(t),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
 
-  // Вспомогательный виджет для кнопок фильтров
-  Widget _buildFilterButton(String text, {required bool isActive}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-      decoration: BoxDecoration(
-        color: isActive ? const Color(0xFF5B6DF6) : const Color(0xFF14161A),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isActive ? Colors.transparent : Colors.white.withOpacity(0.05),
-        ),
+  Widget filterBar() {
+    Widget chip(FilterType f, String text) => ChoiceChip(
+          label: Text(text),
+          selected: filter == f,
+          onSelected: (_) => setState(() => filter = f),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Wrap(
+        spacing: 8,
+        children: [
+          chip(FilterType.all, 'All'),
+          chip(FilterType.active, 'Active'),
+          chip(FilterType.done, 'Done'),
+        ],
       ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: isActive ? Colors.white : Colors.white.withOpacity(0.4),
-          fontWeight: FontWeight.w500,
-          fontSize: 14,
+    );
+  }
+
+  void openAdd() {
+    controller.clear();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          left: 16,
+          right: 16,
+          top: 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: controller,
+              autofocus: true,
+              onSubmitted: submit,
+              decoration: const InputDecoration(
+                labelText: 'New task',
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => submit(controller.text),
+              child: const Text('Add'),
+            )
+          ],
         ),
       ),
     );
+  }
+
+  void submit(String text) {
+    if (text.trim().isEmpty) return;
+    addTodo(text);
+    Navigator.pop(context);
   }
 }
