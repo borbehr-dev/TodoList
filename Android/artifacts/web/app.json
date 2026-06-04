@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "72cbfd56-bcf1-429b-97cb-ac943f97ae7b"
+      }
+    },
+    "owner": "borbehr-dev",
+    "slug": "task-list"
+  }
+}
